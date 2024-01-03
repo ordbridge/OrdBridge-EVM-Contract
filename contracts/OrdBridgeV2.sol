@@ -11,6 +11,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import "./ZUTToken.sol";
 
@@ -43,6 +44,14 @@ contract OrdBridgeV2 is
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
+    }
+
+    // The signer of the claim
+    mapping(address => bool) public singers;
+
+    // Setting Signers
+    function setSigner(address signer, bool ok) external onlyOwner {
+        singers[signer] = ok;
     }
 
     /**
@@ -352,6 +361,31 @@ contract OrdBridgeV2 is
         }
     }
 
+// Implementing Offline signature requirement
+    function addMintERCEntriesSig(
+        string[] calldata requestedBRCTickers,
+        uint256[] calldata multiples,
+        uint256[] calldata amounts,
+        address[] calldata users,
+        string[] calldata txIds,
+        uint256[] calldata initialMaxSupplies,
+        bytes[] memory signatures
+    ) external onlyOwner {
+        require(signatures.length > 1, "Minimum of signatures not present.")
+
+        bytes32 digest = keccak256(
+            abi.encodePacked(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies)
+        );
+        
+        for (uint i = 0; i < signatures.length; i++) {
+            address singer = ECDSA.recover(digest, signatures[i]);
+            require(singers[singer], "signer error");
+        }
+
+        addMintERCEntries(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies);
+
+    }
+
     /**
      * @notice add entries to users
      * Array of [$TICKER, amount, ETH address, Chain_txn_id]
@@ -363,7 +397,7 @@ contract OrdBridgeV2 is
         address[] calldata users,
         string[] calldata txIds,
         uint256[] calldata initialMaxSupplies
-    ) external onlyOwner {
+    ) internal {
         require(
             requestedBRCTickers.length > 0 &&
                 requestedBRCTickers.length == amounts.length &&
