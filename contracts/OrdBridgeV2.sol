@@ -371,10 +371,10 @@ contract OrdBridgeV2 is
         uint256[] calldata initialMaxSupplies,
         bytes[] memory signatures
     ) external onlyOwner {
-        require(signatures.length > 1, "Minimum of signatures not present.")
+        require(signatures.length > 1, "Minimum of signatures not present.");
 
         bytes32 digest = keccak256(
-            abi.encodePacked(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies)
+            abi.encode(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies)
         );
         
         for (uint i = 0; i < signatures.length; i++) {
