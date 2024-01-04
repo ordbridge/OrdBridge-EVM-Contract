@@ -46,14 +46,6 @@ contract OrdBridgeV2 is
         _disableInitializers();
     }
 
-    // The signer of the claim
-    mapping(address => bool) public singers;
-
-    // Setting Signers
-    function setSigner(address signer, bool ok) external onlyOwner {
-        singers[signer] = ok;
-    }
-
     /**
      * When users claim ERC from BRC, we deduct 1% as fees (configurable)
      * When users claim BRC by depositing ERC, we take 0.01 Eth payable (configurable)
@@ -113,6 +105,14 @@ contract OrdBridgeV2 is
     // Pause/Unpause
     event Unpause();
     event Pause();
+
+    // The signer of the claim
+    mapping(address => bool) public signers;
+
+    // Setting Signers
+    function setSigner(address signer, bool ok) external onlyOwner {
+        signers[signer] = ok;
+    }
 
     function initialize() public initializer {
         __Context_init_unchained();
@@ -361,29 +361,49 @@ contract OrdBridgeV2 is
         }
     }
 
-// Implementing Offline signature requirement
+    struct AddMintERCEntry {
+        string[] requestedBRCTickers;
+        uint256[] multiples;
+        uint256[] amounts;
+        address[] users;
+        string[] txIds;
+        uint256[] initialMaxSupplies;
+    }
+
+    // Implementing Offline signature requirement
     function addMintERCEntriesSig(
-        string[] calldata requestedBRCTickers,
-        uint256[] calldata multiples,
-        uint256[] calldata amounts,
-        address[] calldata users,
-        string[] calldata txIds,
-        uint256[] calldata initialMaxSupplies,
+        AddMintERCEntry calldata addMintERCEntry,
         bytes[] memory signatures
     ) external onlyOwner {
-        require(signatures.length > 1, "Minimum of signatures not present.");
+        require(signatures.length > 1, "Minimum no of signatures not present.");
 
-        bytes32 digest = keccak256(
-            abi.encode(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies)
-        );
-        
+        bytes32 digest = getDigest(addMintERCEntry);
+
+        // Temporary mapping to track which addresses have signed
+        // mapping(address => bool) seenSignatures;
+
         for (uint i = 0; i < signatures.length; i++) {
-            address singer = ECDSA.recover(digest, signatures[i]);
-            require(singers[singer], "signer error");
+        
+            address signer = ECDSA.recover(ECDSA.toEthSignedMessageHash(digest), signatures[i]);
+
+            require(signers[signer], "Signer Not valied");
+
+            // // Check if this signer has already signed  
+            // require(!seenSignatures[signatures[i]], "Duplicate signature detected");
+
+            //  // Record this signer
+            // seenSignatures[signatures[i]] = true;
         }
 
-        addMintERCEntries(requestedBRCTickers, multiples, amounts, users, txIds, initialMaxSupplies);
+        addMintERCEntries(addMintERCEntry.requestedBRCTickers, addMintERCEntry.multiples,
+            addMintERCEntry.amounts, addMintERCEntry.users, addMintERCEntry.txIds, addMintERCEntry.initialMaxSupplies);
 
+    }
+
+    function getDigest(AddMintERCEntry calldata addMintERCEntry) internal returns (bytes32) {
+        return keccak256(
+            abi.encode(addMintERCEntry)
+        );
     }
 
     /**
@@ -480,6 +500,11 @@ contract OrdBridgeV2 is
         _unpause();
         emit Unpause();
     }
+
+    function getAddMintEncoding(AddMintERCEntry calldata addMintERCEntry) public onlyOwner view returns (bytes32) {
+        return getDigest(addMintERCEntry);
+    }
+
 
     function _authorizeUpgrade(
         address newImplementation
