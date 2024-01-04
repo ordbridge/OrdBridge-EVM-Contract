@@ -11,6 +11,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "@openzeppelin/contracts/utils/Strings.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 import "./ZUTToken.sol";
 
@@ -104,6 +105,14 @@ contract OrdBridgeV2 is
     // Pause/Unpause
     event Unpause();
     event Pause();
+
+    // The signer of the claim
+    mapping(address => bool) public signers;
+
+    // Setting Signers
+    function setSigner(address signer, bool ok) external onlyOwner {
+        signers[signer] = ok;
+    }
 
     function initialize() public initializer {
         __Context_init_unchained();
@@ -352,6 +361,51 @@ contract OrdBridgeV2 is
         }
     }
 
+    struct AddMintERCEntry {
+        string[] requestedBRCTickers;
+        uint256[] multiples;
+        uint256[] amounts;
+        address[] users;
+        string[] txIds;
+        uint256[] initialMaxSupplies;
+    }
+
+    // Implementing Offline signature requirement
+    function addMintERCEntriesSig(
+        AddMintERCEntry calldata addMintERCEntry,
+        bytes[] memory signatures
+    ) external onlyOwner {
+        require(signatures.length > 1, "Minimum no of signatures not present.");
+
+        bytes32 digest = getDigest(addMintERCEntry);
+
+        // Temporary mapping to track which addresses have signed
+        // mapping(address => bool) seenSignatures;
+
+        for (uint i = 0; i < signatures.length; i++) {
+        
+            address signer = ECDSA.recover(ECDSA.toEthSignedMessageHash(digest), signatures[i]);
+
+            require(signers[signer], "Signer Not valied");
+
+            // // Check if this signer has already signed  
+            // require(!seenSignatures[signatures[i]], "Duplicate signature detected");
+
+            //  // Record this signer
+            // seenSignatures[signatures[i]] = true;
+        }
+
+        addMintERCEntries(addMintERCEntry.requestedBRCTickers, addMintERCEntry.multiples,
+            addMintERCEntry.amounts, addMintERCEntry.users, addMintERCEntry.txIds, addMintERCEntry.initialMaxSupplies);
+
+    }
+
+    function getDigest(AddMintERCEntry calldata addMintERCEntry) internal returns (bytes32) {
+        return keccak256(
+            abi.encode(addMintERCEntry)
+        );
+    }
+
     /**
      * @notice add entries to users
      * Array of [$TICKER, amount, ETH address, Chain_txn_id]
@@ -363,7 +417,7 @@ contract OrdBridgeV2 is
         address[] calldata users,
         string[] calldata txIds,
         uint256[] calldata initialMaxSupplies
-    ) external onlyOwner {
+    ) internal {
         require(
             requestedBRCTickers.length > 0 &&
                 requestedBRCTickers.length == amounts.length &&
@@ -446,6 +500,11 @@ contract OrdBridgeV2 is
         _unpause();
         emit Unpause();
     }
+
+    function getAddMintEncoding(AddMintERCEntry calldata addMintERCEntry) public onlyOwner view returns (bytes32) {
+        return getDigest(addMintERCEntry);
+    }
+
 
     function _authorizeUpgrade(
         address newImplementation
