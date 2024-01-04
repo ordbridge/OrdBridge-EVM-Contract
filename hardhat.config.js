@@ -3,8 +3,8 @@ require ("@nomicfoundation/hardhat-verify");
 require('@openzeppelin/hardhat-upgrades');
 
 /** @type import('hardhat/config').HardhatUserConfig */
-
-const sepoliaApiKey = process.env.SEPOLIA_API_KEY;
+require('dotenv').config();
+const sepoliaUrl = process.env.SEPOLIA_URL;
 const sepoliaAccount = process.env.SEPOLIA_ACCOUNT;
 
 module.exports = {
@@ -23,7 +23,7 @@ module.exports = {
   etherscan: {
     apiKey: {
       snowtrace: "snowtrace", // apiKey is not required, just set a placeholder
-      sepolia: sepoliaApiKey,
+      //sepolia: sepoliaApiKey,
     },
     customChains: [
       {
@@ -46,7 +46,7 @@ module.exports = {
       // accounts: [process.env.PRIVATE_KEY]
     },
     sepolia: {
-      url: 'https://eth-sepolia-public.unifra.io',
+      url: sepoliaUrl,
       accounts: [sepoliaAccount],
     }
   },

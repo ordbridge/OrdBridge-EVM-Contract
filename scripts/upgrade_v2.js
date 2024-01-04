@@ -5,7 +5,7 @@
 // will compile your contracts, add the Hardhat Runtime Environment's members to the
 // global scope, and execute the script.
 const hre = require("hardhat");
-
+require('dotenv').config();
 async function main() {
 
   const contractAddress = process.env.CONTRACT_ADDRESS;

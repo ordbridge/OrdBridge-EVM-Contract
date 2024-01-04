@@ -6,7 +6,7 @@
 // global scope, and execute the script.
 const { parseUnits } = require("ethers");
 const hre = require("hardhat");
-
+require('dotenv').config();
 async function main() {
   const [owner] = await ethers.getSigners();
 
@@ -21,14 +21,18 @@ async function main() {
     initialMaxSupplies: [parseUnits("21000000", 18)]
 };
 
-const signatures = ["0xfe78410ed5ed2cc5b1830f90b0f8bc64fc84235b85b8765e0fbdfa2a637098fd3aac80a0955df95e3d40d902f280a01dd8e75171e611b57ae8e2b7cb0378ec8d1b",
-"0xfe78410ed5ed2cc5b1830f90b0f8bc64fc84235b85b8765e0fbdfa2a637098fd3aac80a0955df95e3d40d902f280a01dd8e75171e611b57ae8e2b7cb0378ec8d1b"]
-
+  const signatures = []
   const instance = await hre.ethers.getContractAt("OrdBridgeV2", contractAddress);
-  //await instance.updateFeeRecipient(owner.address);
-
-  const tx1 = await instance.addMintERCEntries(data,signatures);
+  await instance.updateFeeRecipient(owner.address);
+  //const tx3 = await instance.mintableERCTokens;
+  //console.log(tx3)
+  const tx1 = await instance.addMintERCEntries(["ordi"], [1000], [parseUnits("1000", 18)], [owner.address], ["tx000001"], [parseUnits("21000000", 18)]);
   console.log(tx1);
+
+//  const tx2 = await instance.claimERCEntryForWallet('ordi', 1000);
+//  console.log(tx2);
+  //const tx1 = await instance.addMintERCEntries(data,signatures);
+  //console.log(tx1);
 
   // const tx2 = await instance.claimERCEntryForWallet('ordi', 1000);
   // console.log(tx2);
