@@ -18,25 +18,19 @@ import "./ZUTToken.sol";
  *
  * @notice OrdBridge contract is upgradeable/pausable contract
  */
-contract OrdBridge is
-    Initializable,
-    OwnableUpgradeable,
-    ReentrancyGuardUpgradeable,
-    PausableUpgradeable,
-    UUPSUpgradeable
-{
+contract OrdBridge is Initializable, OwnableUpgradeable, ReentrancyGuardUpgradeable, PausableUpgradeable , UUPSUpgradeable {
     using SafeERC20Upgradeable for IERC20Upgradeable;
     using EnumerableSet for EnumerableSet.UintSet;
     using Counters for Counters.Counter;
 
     struct BurnForBRCEntry {
         uint256 id; // same as index of burnForBRCEntries
-        string chain;
         string ticker;
         address user;
         uint256 amount;
-        string addr;
+        string btcAddress;
     }
+
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -54,7 +48,7 @@ contract OrdBridge is
     // ticker => contractAddress
     mapping(string => address) public tokenContracts;
     mapping(string => uint256) maxSupplyForTicker;
-    mapping(string => bool) txIdsMap;
+    mapping(string => bool) btcTxIdsMap;
 
     ///////// for Mint
     // ticker => address => amount
@@ -66,39 +60,21 @@ contract OrdBridge is
     Counters.Counter private counters;
     mapping(uint => BurnForBRCEntry) burnEntriesMap;
 
+
+
+
     event ERCTokenContractCreated(string indexed ticker, address indexed token);
-    event MintableERCEntryAdded(
-        string indexed ticker,
-        address indexed user,
-        uint256 amount,
-        string txId
-    );
-    event MintableERCEntryClaimed(
-        string indexed ticker,
-        address indexed user,
-        uint256 amount,
-        uint256 real,
-        uint256 fee
-    );
+    event MintableERCEntryAdded(string indexed ticker, address indexed user, uint256 amount, string btcTxId);
+    event MintableERCEntryClaimed(string indexed ticker, address indexed user, uint256 amount, uint256 real, uint256 fee);
 
     event BurnForBRCEntryAdded(
-        string chain,
         string indexed ticker,
         address indexed user,
-        string indexed addr,
+        string indexed btcAddress,
         uint256 id,
         uint256 amount
     );
-
-    event BurnForBRCEntryProcessed(
-        string chain,
-        string indexed ticker,
-        address indexed user,
-        string indexed addr,
-        uint256 id,
-        uint256 count
-    );
-
+    event BurnForBRCEntryProcessed(string indexed ticker , address indexed user,  string indexed btcAddress, uint256 id, uint256 count);
     // Pause/Unpause
     event Unpause();
     event Pause();
@@ -116,30 +92,22 @@ contract OrdBridge is
     /**
      * @notice get burn entries to process
      */
-    function getBurnForBRCEntriesCountToProcess()
-        public
-        view
-        returns (uint256 count)
-    {
+    function getBurnForBRCEntriesCountToProcess() public view returns (uint256 count) {
         return burnEntriesSet.length();
     }
 
-    function checkPendingERCToClaimForWalletWithTickers(
-        address wallet,
-        string[] memory tickers
-    ) external view returns (string[] memory, uint256[] memory) {
+    function checkPendingERCToClaimForWalletWithTickers(address wallet, string[] memory tickers) external view returns (string[] memory, uint256[] memory) {
         string[] memory pendingTickers = new string[](tickers.length);
         uint256[] memory pendingCounts = new uint256[](tickers.length);
         uint256 pendingIndex = 0;
 
         for (uint256 i = 0; i < tickers.length; i++) {
+            
             string memory uppercaseTicker = uppercase(tickers[i]);
 
             if (mintableERCTokens[uppercaseTicker][wallet] > 0) {
                 pendingTickers[pendingIndex] = uppercaseTicker;
-                pendingCounts[pendingIndex] = mintableERCTokens[
-                    uppercaseTicker
-                ][wallet];
+                pendingCounts[pendingIndex] = mintableERCTokens[uppercaseTicker][wallet];
                 pendingIndex++;
             }
         }
@@ -153,34 +121,23 @@ contract OrdBridge is
         return (pendingTickers, pendingCounts);
     }
 
+
+
+
     /**
      * @notice get {count} of burn entries to process
      */
     function getBurnForBRCEntriesToProcess(
         uint256 count
-    )
-        external
-        view
-        returns (
-            BurnForBRCEntry[] memory entries,
-            uint256 entriesCount,
-            uint256 totalEntriesToProcess
-        )
-    {
+    ) external view returns (BurnForBRCEntry[] memory entries, uint256 entriesCount, uint256 totalEntriesToProcess) {
         require(count > 0, "Invalid count");
         totalEntriesToProcess = getBurnForBRCEntriesCountToProcess();
-        entriesCount = totalEntriesToProcess < count
-            ? totalEntriesToProcess
-            : count;
+        entriesCount = totalEntriesToProcess < count ? totalEntriesToProcess : count;
 
         entries = new BurnForBRCEntry[](entriesCount);
         uint[] memory setEntry = burnEntriesSet.values();
 
-        for (
-            uint index = 0;
-            index < totalEntriesToProcess && index < entriesCount;
-            index += 1
-        ) {
+        for (uint index = 0; index < totalEntriesToProcess && index < entriesCount; index += 1) {
             entries[index] = burnEntriesMap[setEntry[index]];
         }
     }
@@ -192,98 +149,59 @@ contract OrdBridge is
      * if token contract doesn't exist, it will create new one, and mint.
      */
 
-    function claimERCEntryForWallet(
-        string memory ticker
-    ) external whenNotPaused nonReentrant {
+
+    function claimERCEntryForWallet(string memory ticker) external whenNotPaused nonReentrant {
+        
         string memory uppercaseTicker = uppercase(ticker);
         require(mintableERCTokens[uppercaseTicker][msg.sender] > 0, "No entry");
         if (tokenContracts[uppercaseTicker] == address(0)) {
-            uint256 _initialMaxSupplyForTicker = maxSupplyForTicker[
-                uppercaseTicker
-            ];
-            require(_initialMaxSupplyForTicker > 0, "Initial supply not set");
+
+            uint256 _initialMaxSupplyForTicker = maxSupplyForTicker[uppercaseTicker];	
+            require(_initialMaxSupplyForTicker > 0, "Initial supply not set");	
             // Create a new ZUT contract with the initial supply
-            ZUTToken token = new ZUTToken(
-                uppercaseTicker,
-                _initialMaxSupplyForTicker
-            );
+            ZUTToken token = new ZUTToken(uppercaseTicker,  _initialMaxSupplyForTicker);
             tokenContracts[uppercaseTicker] = address(token);
             emit ERCTokenContractCreated(uppercaseTicker, address(token));
         }
+        
+        uint256 feeTokenAmount = (mintableERCTokens[uppercaseTicker][msg.sender] * TOKEN_FEE_PERCENT_IN_BPS) / 10000;
+        uint256 userTokenAmount = mintableERCTokens[uppercaseTicker][msg.sender] - feeTokenAmount;
 
-        uint256 feeTokenAmount = (mintableERCTokens[uppercaseTicker][
-            msg.sender
-        ] * TOKEN_FEE_PERCENT_IN_BPS) / 10000;
-        uint256 userTokenAmount = mintableERCTokens[uppercaseTicker][
-            msg.sender
-        ] - feeTokenAmount;
+        ZUTToken(tokenContracts[uppercaseTicker]).mintTo(feeRecipient, feeTokenAmount);
+        ZUTToken(tokenContracts[uppercaseTicker]).mintTo(msg.sender, userTokenAmount);
 
-        ZUTToken(tokenContracts[uppercaseTicker]).mintTo(
-            feeRecipient,
-            feeTokenAmount
-        );
-        ZUTToken(tokenContracts[uppercaseTicker]).mintTo(
-            msg.sender,
-            userTokenAmount
-        );
-
-        emit MintableERCEntryClaimed(
-            uppercaseTicker,
-            msg.sender,
-            mintableERCTokens[uppercaseTicker][msg.sender],
-            userTokenAmount,
-            feeTokenAmount
-        );
+        emit MintableERCEntryClaimed(uppercaseTicker, msg.sender, mintableERCTokens[uppercaseTicker][msg.sender], userTokenAmount, feeTokenAmount);
 
         delete mintableERCTokens[uppercaseTicker][msg.sender];
     }
 
     /**
      * @notice users call this function to bridge ERC20 to BRC20
-     * @param chain btc, avax, eth
      */
     function burnERCTokenForBRC(
-        string calldata chain,
         string calldata ticker,
         uint256 amount,
-        string calldata addr
+        string calldata btcAddress
     ) external payable nonReentrant whenNotPaused {
-        // Validate that the address.
-        //require(isSupportedAddress(chain, addr), "Invalid address format.");
 
+        // Validate that the btcAddress is an ordinal compatible taproot address (P2TR)
+        require(isOrdinalTaprootAddress(btcAddress), "Invalid BTC address format, needs a P2TR address.");
+        
         string memory uppercaseTicker = uppercase(ticker);
         require(msg.value == BURN_ETH_FEE, "Incorrect fee");
-
         // solhint-disable-next-line
-        (bool success, ) = feeRecipient.call{value: BURN_ETH_FEE}("");
+        (bool success, ) = feeRecipient.call{ value: BURN_ETH_FEE }("");
         require(success, "Fee recipient call failed");
-
-        require(
-            tokenContracts[uppercaseTicker] != address(0),
-            "Invalid ticker"
-        );
+        
+        require(tokenContracts[uppercaseTicker] != address(0), "Invalid ticker");
 
         ZUTToken(tokenContracts[uppercaseTicker]).burnFrom(msg.sender, amount);
 
         counters.increment();
         burnEntriesSet.add(counters.current());
-        burnEntriesMap[counters.current()] = BurnForBRCEntry(
-            counters.current(),
-            chain,
-            uppercaseTicker,
-            msg.sender,
-            amount,
-            addr
-        );
+        burnEntriesMap[counters.current()] = BurnForBRCEntry(counters.current(), uppercaseTicker, msg.sender, amount, btcAddress);
 
-        emit BurnForBRCEntryAdded(
-            chain,
-            uppercaseTicker,
-            msg.sender,
-            addr,
-            counters.current(),
-            amount
-        );
+        emit BurnForBRCEntryAdded(uppercaseTicker, msg.sender, btcAddress, counters.current(), amount);
     }
 
     ///////////////////////////////////////////////////////
@@ -292,35 +210,25 @@ contract OrdBridge is
     /**
      * @notice method to mark burn entries
      */
-    function markBurnForBRCEntriesAsProcessed(
-        uint256[] calldata ids
-    ) external onlyOwner {
+    function markBurnForBRCEntriesAsProcessed(uint256[] calldata ids) external onlyOwner {
+        
         for (uint256 index = 0; index < ids.length; index++) {
             uint256 id = ids[index];
             require(id <= counters.current(), "Invalid id");
             BurnForBRCEntry memory burnForBRCEntry = burnEntriesMap[id];
-            emit BurnForBRCEntryProcessed(
-                burnForBRCEntry.chain,
-                burnForBRCEntry.ticker,
-                burnForBRCEntry.user,
-                burnForBRCEntry.addr,
-                id,
-                burnForBRCEntry.amount
-            );
+            emit BurnForBRCEntryProcessed(burnForBRCEntry.ticker, burnForBRCEntry.user,  burnForBRCEntry.btcAddress, id, burnForBRCEntry.amount);
             // Delete the processed entry
             burnEntriesSet.remove(id);
             delete burnEntriesMap[id];
         }
     }
 
-    function uppercase(
-        string memory ticker
-    ) internal pure returns (string memory) {
+
+    function uppercase(string memory ticker) internal pure returns (string memory) {
+        
         bytes memory tickerBytes = bytes(ticker);
         for (uint256 i = 0; i < tickerBytes.length; i++) {
-            if (
-                (uint8(tickerBytes[i]) >= 97) && (uint8(tickerBytes[i]) <= 122)
-            ) {
+            if ((uint8(tickerBytes[i]) >= 97) && (uint8(tickerBytes[i]) <= 122)) {
                 tickerBytes[i] = bytes1(uint8(tickerBytes[i]) - 32);
             }
         }
@@ -329,46 +237,38 @@ contract OrdBridge is
 
     /**
      * @notice add entries to users
-     * Array of [$TICKER, amount, ETH address, Chain_txn_id]
+     * Array of [$TICKER, amount, ETH address, BTC_txn_id]
      */
     function addMintERCEntries(
         string[] calldata requestedBRCTickers,
         uint256[] calldata amounts,
         address[] calldata users,
-        string[] calldata txIds,
-        uint256[] calldata initialMaxSupplies
+        string[] calldata btcTxIds,
+        uint256[] calldata initialMaxSupplies	
     ) external onlyOwner {
-        require(
+        require( 
             requestedBRCTickers.length > 0 &&
                 requestedBRCTickers.length == amounts.length &&
                 requestedBRCTickers.length == users.length &&
-                requestedBRCTickers.length == txIds.length,
+                requestedBRCTickers.length == btcTxIds.length ,
             "Invalid params"
         );
 
         for (uint256 index = 0; index < requestedBRCTickers.length; index++) {
-            if (txIdsMap[txIds[index]] == false) {
-                string memory uppercaseTicker = uppercase(
-                    requestedBRCTickers[index]
-                );
-                mintableERCTokens[uppercaseTicker][users[index]] += amounts[
-                    index
-                ];
+            
+            if (btcTxIdsMap[btcTxIds[index]] == false) {
+                
+                string memory uppercaseTicker = uppercase(requestedBRCTickers[index]);
+                mintableERCTokens[uppercaseTicker][users[index]] += amounts[index];
 
                 // Set the initial supply for the ZUT contract if it doesn't exist
                 if (maxSupplyForTicker[uppercaseTicker] == 0) {
-                    maxSupplyForTicker[uppercaseTicker] = initialMaxSupplies[
-                        index
-                    ];
+                    maxSupplyForTicker[uppercaseTicker] = initialMaxSupplies[index];
                 }
-                txIdsMap[txIds[index]] = true;
+                btcTxIdsMap[btcTxIds[index]] = true;
 
-                emit MintableERCEntryAdded(
-                    uppercaseTicker,
-                    users[index],
-                    amounts[index],
-                    txIds[index]
-                );
+                emit MintableERCEntryAdded(uppercaseTicker, users[index], amounts[index], btcTxIds[index]);
+
             }
         }
     }
@@ -388,16 +288,12 @@ contract OrdBridge is
         feeRecipient = _feeRecipient;
     }
 
+
     /**
      * @notice method to update TOKEN_FEE_PERCENT_IN_BPS
      */
-    function updateHandlingFeesInTokenPercent(
-        uint256 _TOKEN_FEE_PERCENT_IN_BPS
-    ) external onlyOwner {
-        require(
-            _TOKEN_FEE_PERCENT_IN_BPS < 10000,
-            "Invalid _TOKEN_FEE_PERCENT_IN_BPS"
-        );
+    function updateHandlingFeesInTokenPercent(uint256 _TOKEN_FEE_PERCENT_IN_BPS) external onlyOwner {
+        require(_TOKEN_FEE_PERCENT_IN_BPS < 10000, "Invalid _TOKEN_FEE_PERCENT_IN_BPS");
         TOKEN_FEE_PERCENT_IN_BPS = _TOKEN_FEE_PERCENT_IN_BPS;
     }
 
@@ -418,8 +314,30 @@ contract OrdBridge is
         _unpause();
         emit Unpause();
     }
+    
+    // function _beforeTokenTransfer(address from, address to, uint256 amount)
+    //     internal
+    //     whenNotPaused
+    //     override
+    // {
+    //     super._beforeTokenTransfer(from, to, amount);
+    // }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyOwner {}
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        onlyOwner
+        override
+    {}
+
+    function isOrdinalTaprootAddress(string memory btcAddress) internal pure returns (bool) {
+    // Check that the btcAddress starts with "bc1" (P2TR address prefix)
+    bytes memory addressBytes = bytes(btcAddress);
+    bytes memory prefixBytes = bytes("bc1");
+
+    for (uint i = 0; i < prefixBytes.length; i++) {
+        if (addressBytes[i] != prefixBytes[i]) {
+            return false;
+        }
+    }    
+    return true;
 }
